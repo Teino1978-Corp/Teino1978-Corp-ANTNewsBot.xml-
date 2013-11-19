@@ -2,19 +2,34 @@
 	=========================================================================== 
 	ANT News Bot
 	=========================================================================== 
-	
-	you need to create some HTML snippets for your news and your archive:
-	header, footer, entry, twitter button (optional)
-	
 	Sample files are provided below.
 	
+	Folder structure:
+	/
+	/ant
+	/ant/ant-contrib (external ant lib)
+	/ant/newsbot
+	/ant/newsbot/compiled
+	/ant/newsbot/news
+	/ant/newsbot/snippets
+	/yourreleasefolder (I called it news)
+	
+	
+	How To Start:
+	1. create some HTML snippets for headers, footers, navigation and the 
+	   optional twitter button (if you want to use it).
+	   Put Everything in your snippets folder.
+	2. put AntNewsBot.xml along with your newsbot properties your the ant folder.
+	3. create newsmessage.html in your ant folder.
+	4. if your want to pre-define some crosslinks, put the crosslinks.txt into
+	   the newsbot folder.
+	5. type your news into newsmessage.html (you can format it with HTML tags)
+	6. execute the default task "process"
+	   the tasks ask you about date, title, etc.
+	
  -->
-<project default="process" 
-		name="NewsBot"
-	>
-    <description>
-    	ANT-XML that complies news pages.
-    </description>
+<project default="process" name="NewsBot">
+    <description>ANT-XML that complies news pages.</description>
 	
 <!--
 	=========================================================================== 
