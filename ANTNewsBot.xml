@@ -22,7 +22,7 @@
 	===========================================================================
 	change it within the props file
 -->
-	<loadproperties srcfile="HVPage/ant/newsbot.properties"/>
+	<loadproperties srcfile="ant/newsbot.properties"/>
 	
 <!--
 	=========================================================================== 
