@@ -1,0 +1,841 @@
+<!-- 
+	=========================================================================== 
+	ANT News Bot
+	=========================================================================== 
+	
+	you need to create some HTML snippets for your news and your archive:
+	header, footer, entry, twitter button (optional)
+	
+	Sample files are provided below.
+	
+ -->
+<project default="process" 
+		name="NewsBot"
+	>
+    <description>
+    	ANT-XML that complies news pages.
+    </description>
+	
+<!--
+	=========================================================================== 
+		Public Properties
+	===========================================================================
+	change it within the props file
+-->
+	<loadproperties srcfile="HVPage/ant/newsbot.properties"/>
+	
+<!--
+	=========================================================================== 
+		TASK DEFINITIONS
+	===========================================================================
+-->
+	<!-- add ant-contrib lib -->
+	<!-- http://ant-contrib.sourceforge.net/ -->
+	<!-- Version 1.0b3 -->
+	<taskdef resource="net/sf/antcontrib/antlib.xml">
+		<classpath>
+			<pathelement location="${dir.ant}ant-contrib/ant-contrib-1.0b3.jar"/>
+		</classpath>
+	</taskdef>
+		
+<!-- 
+	===========================================================================
+		Private Properties
+	===========================================================================
+ -->
+	<tstamp>
+		<format property="internal_today" pattern="yyyy-MM-dd"/>
+	</tstamp>
+			
+<!-- 
+	===========================================================================
+		Target init
+	===========================================================================
+ -->		
+	<target name="init" 
+			description="init and preparations" >
+		
+		<!-- check if crosslinks is needed -->
+		<if>
+			<available file="${nb.basedir}crosslinks.txt" />
+			<then>
+				<loadproperties srcfile="${nb.basedir}crosslinks.txt"/>
+			</then>
+			<elseif>
+				<equals arg1="${nb.crosslinks.enabled}" arg2="true"/>
+				<then>
+					
+					<fail message="crosslinks enabled and ${nb.basedir}crosslinks.txt not found"/>
+				</then>
+			</elseif>
+		</if>
+		
+		<!-- check if newsmessage.html exists -->
+		<if>
+			<available file="${dir.ant}newsmessage.html" />
+			<then>
+				<loadfile property="nb.latestnews" srcFile="${dir.ant}newsmessage.html"/>
+			</then>
+			<else>
+				<fail message="${dir.ant}newsmessage.html is missing"/>
+			</else>
+		</if>
+					
+	</target>
+	
+<!-- 
+	===========================================================================
+		Target save_news
+	===========================================================================
+ -->	
+	<target name="save_news"
+			description="saves the latest news into the uncompiled folder" >
+		
+		<!-- indexing the news -->
+		<loadfile srcfile="${nb.basedir}index.txt" property="firstline">
+			<filterchain>
+				<headfilter lines="1"/>
+			</filterchain>
+		</loadfile>
+		<if>
+			<equals arg1="${firstline}" arg2="${news.date}${line.separator}"/>
+			<then>
+				<echo message="News ${news.date} already indexed."/>
+			</then>
+			<else>
+				<echo message="Adding news ${news.date} to index."/>
+				<loadfile property="completeindex" srcFile="${nb.basedir}index.txt"/>
+				<if>
+					<isset property="completeindex" />
+					<then>
+						<echo file="${nb.basedir}index.txt">${news.date}${line.separator}${completeindex}</echo>		
+					</then>
+					<else>
+						<echo file="${nb.basedir}index.txt">${news.date}</echo>		
+					</else>
+				</if>
+			</else>
+		</if>
+		<!-- the headline -->
+		<echo file="${nb.dir.news}${news.date}_head.txt">${news.headline}</echo>
+		<!-- the message -->
+		<copy file="${dir.ant}newsmessage.html" tofile="${nb.dir.news}${news.date}_msg.txt" />
+		<if>
+			<and>	
+				<equals arg1="${nb.twitter.enabled}" arg2="true"/>
+			</and>
+			<then>
+				<echo file="${nb.dir.news}${news.date}_tags.txt" message="${news.hashtag}" />
+			</then>
+		</if>
+		<if>
+			<and>	
+				<equals arg1="${nb.twitter.enabled}" arg2="true"/>
+			</and>
+			<then>
+				<echo file="${nb.dir.news}${news.date}_turl.txt" message="${news.tweeturl}"/>
+			</then>
+		</if>
+	</target>
+	<!-- 
+		===========================================================================
+			Target replace_crosslinks
+		===========================================================================
+		
+		Crosslinks are marked like this:
+		[The Crosslink]
+		
+		Or like this if the url is defined inside the article without crosslinks.txt
+		[Custom Crosslink](yourcustomlink)
+		
+		And are definend in crosslinks.txt:
+		[The Crosslink].href= your link
+		[The Crosslink].title= links title
+	 -->
+	<target name="replace_crosslinks"
+			description="called from compile_news looks for marked crosslinks">
+		
+		<!-- load crosslinks file to extract the key prefixes they are already loaded as properties before -->
+		<loadfile srcfile="${nb.basedir}crosslinks.txt" property="cl.all" />
+		<echo>parsing crosslinks.txt for identifiers...</echo>
+		
+		<for param="line" list="${cl.all}" delimiter="${line.separator}">
+			<sequential>
+				<local name="cl.identifier.masked"/>
+				<local name="cl.identifier"/>
+				<local name="cl.label"/>
+				
+				<propertyregex property="cl.identifier.masked"
+						input="@{line}"
+						regexp="(\[?[\w\d\\\ ]+\]?).href="
+						select="\1"
+						casesensitive="false"
+						global="true"/>
+				<!-- unmask spaces -->
+				<propertyregex property="cl.identifier"
+						input="${cl.identifier.masked}"
+						regexp="[\\\ ]+"
+						replace=" "
+						casesensitive="false"
+						global="true"/>
+				<if>
+					<and>
+						<isset property="cl.identifier.masked"/>
+						<not>
+							<isset property="cl.identifier"/>
+						</not>							
+					</and>
+					<then>
+						<property name="cl.identifier" value="${cl.identifier.masked}" /> 
+					</then>
+				</if>
+				
+				<!-- extract label without brackets -->
+				<propertyregex property="cl.label"
+						input="${cl.identifier}"
+						regexp="\[([\w\d\\\ ]+)\]"
+						select="\1"
+						casesensitive="false"
+						global="true"/>
+				
+				<if> 
+					<isset property="cl.identifier.masked"/>
+					<then>
+						<echo>Identifier found: ${cl.identifier}</echo>
+						<echo> - label: ${cl.label}</echo>
+						
+						<propertycopy name="cl.href" from="${cl.identifier}.href" override="true"/>
+						<propertycopy name="cl.title" from="${cl.identifier}.title" override="true"/>
+						
+						<echo> - href: ${cl.href}</echo>
+						<echo> - title: ${cl.title}</echo>
+						<!-- now check the news entry for found crosslink definition -->
+						
+						<!-- mask brackets -->
+						<local name="cl.identifier.formatch" />
+						<property name="cl.identifier.formatch" value="\[${cl.label}\]"/>
+						
+						<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+								match="${cl.identifier.formatch}(.*)"
+								replace="\&lt;a href='${cl.href}' class='link crosslink' title='${cl.title}'\&gt;${cl.label}\&lt;/a\&gt;\1"
+								byline="true"
+							/>
+						
+					</then>
+				</if>
+			</sequential>
+		</for>
+		
+		<loadfile srcfile="${nb.dir.compiled}${newsdate}_entry.html" property="cl.inline" />
+		<echo>parsing for inline crosslinks...</echo>
+		<!-- 
+			TODO custom inline links \[([^\]]+)\]\((http[^)]+)
+			/1 label
+			/2 url
+		-->				
+		<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+				match="(\[([^\]]+)\]\((http[^)]+)\))"
+				replace="\&lt;a href='\3' class='link' target='externlink' title='go to \3'\&gt; \2 \&lt;/a\&gt;"
+				flags="gs"
+			/>
+		
+	</target>
+		
+	<!-- 
+		===========================================================================
+			Target compile_twitter_button
+		===========================================================================
+		Replacers for $ { nb.snippet.twitter } :
+		
+		@HEADLINE - tweet message same as news headline
+		@TWT_URL - tweet reference url if empty no button is generated
+		@TWT_VIA - your twitter account name
+		@TWT_HASHTAGS - (optional hash tags)
+	 -->
+	<target name="compile_twitter_button"
+			description="called from compile_news adds the twitter button">
+		
+		<loadfile property="twt_btn" srcFile="${nb.snippet.twitter}"/>
+		<loadfile property="tags" srcFile="${nb.dir.news}${newsdate}_tags.txt"/>
+		<loadfile property="turl" srcFile="${nb.dir.news}${newsdate}_turl.txt"/>
+		
+		<if>
+			<equals arg1="${turl}" arg2=" " />
+			<then>
+				<echo message="- no URL skip twitter button" />
+				<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+						match="@TWT_BTN(.*)"
+						replace="\1"
+						byline="true"
+					/>
+			</then>
+			<else>
+				<echo message="- adding Twitter Button" />
+				<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+						match="@TWT_BTN(.*)"
+						replace="${twt_btn}\1"
+						byline="true"
+					/>
+				
+				<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+						match="@TWT_VIA(.*)"
+						replace="${nb.twitter.via}\1"
+						byline="true"
+					/>		
+				
+				<if>
+					<isset property="tags" />
+					<then>
+						<echo message="- hashtags found" />
+						<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+								match="@TWT_HASHTAGS(.*)"
+								replace="${tags}\1"
+								byline="true"
+							/>
+					</then>
+				</if>	
+				<echo message="- setting reference url" />
+				<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+						match="@TWT_URL(.*)"
+						replace="${turl}\1"
+						byline="true"
+					/>
+			</else>
+		</if>
+		
+	</target>
+<!-- 
+	===========================================================================
+		Target compile_news
+	===========================================================================
+	Replacers for $ { nb.snippet.entry } :
+	
+	@HEADLINE - news headline
+	@ANAME - a tag reference name
+	@DATE - news date
+	@MESSAGE - news message
+	@TWT_BTN - (optional twitter button )
+ -->	
+	<target name="compile_news"
+				description="compiles a single news into a html snippet. needs param: newsdate" >
+		
+		<echo message="compiling news: ${newsdate}" />
+		
+		<copy file="${nb.snippet.entry}" 
+				tofile="${nb.dir.compiled}${newsdate}_entry.html" 
+				overwrite="true" />
+		
+		<loadfile property="head" srcFile="${nb.dir.news}${newsdate}_head.txt"/>
+		<loadfile property="msg" srcFile="${nb.dir.news}${newsdate}_msg.txt"/>
+		<if>
+			<equals arg1="${nb.twitter.enabled}" arg2="true"/>
+			<then>
+				<antcall target="compile_twitter_button">
+					<param name="newsdate" value="${newsdate}"/>
+				</antcall>
+			</then>
+			<else>
+				<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+						match="@TWT_BTN(.*)"
+						replace="\1"
+						byline="true"
+					/>
+			</else>
+		</if>
+		<!-- news -->
+		<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+				match="@HEADLINE(.*)"
+				replace="${head}\1"
+				byline="true"
+			/>
+		<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+				match="@ANAME(.*)"
+				replace="news_${newsdate}\1"
+				byline="true"
+			/>
+		
+		<!-- converting the date -->
+		<script language="javascript"><![CDATA[
+			importClass(java.text.SimpleDateFormat);
+		
+			sdfInternal = new SimpleDateFormat("yyyy-MM-dd");
+			sdfReadable = new SimpleDateFormat("dd.MM.yyyy");
+		
+			readabledate = sdfReadable.format(sdfInternal.parse(NewsBot.getProperty("newsdate")))	
+			NewsBot.setProperty("readabledate", readabledate)	
+		]]></script>
+		
+		<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+				match="@DATE(.*)"
+				replace="${readabledate}\1"
+				byline="true"
+			/>
+		<replaceregexp file="${nb.dir.compiled}${newsdate}_entry.html"
+				match="@MESSAGE(.*)"
+				replace="${msg}\1"
+				byline="true"
+			/>
+				
+		<!-- looking for cross links -->
+		<if>
+			<equals arg1="${nb.crosslinks.enabled}" arg2="true"/>
+			<then>
+				<antcall target="replace_crosslinks">
+					<param name="newsdate" value="${newsdate}"/>
+				</antcall>
+			</then>
+		</if>				
+	</target>
+
+	<!-- 
+		===========================================================================
+			Target compile_changed_entries
+		===========================================================================
+	 -->	
+	<target name="compile_changed_entries"
+		description="looks for changes in all news articles and recompiles it, if it is out dated. Or if nb.compileoption is all"
+		>
+		
+		<loadfile property="completeindex" srcFile="${nb.basedir}index.txt"/>
+						
+		<if>
+			<equals arg1="${nb.compileoption}" arg2="all"/>
+			<then>
+				<!-- add all -->
+				<echo>re-compile all...</echo>		
+								
+				<for param="entry" list="${completeindex}" delimiter="${line.separator}">
+					<sequential>
+						<antcall target="compile_news">
+							<param name="newsdate" value="@{entry}"/>
+						</antcall>
+					</sequential>
+				</for>		
+			</then>
+			<else>
+				<!-- only changed files -->
+				<echo>checking for changes...</echo>		
+				<for param="entry" list="${completeindex}" delimiter="${line.separator}">
+					<sequential>
+						<local name="nb.fileset.changed.head" />
+						<local name="nb.fileset.changed.msg" />
+						<local name="nb.fileset.changed.tags" />
+						<local name="nb.fileset.changed.turl" />
+										
+						<echo>checking: @{entry}</echo>
+										
+						<fileset file="${nb.dir.news}@{entry}_head.txt" id="fs.head">
+						  	<modified update="true"
+									seldirs="false"
+									cache="propertyfile"
+					                algorithm="digest"
+									comparator="equal"
+								>
+								<param name="cache.cachefile" value="${nb.basedir}news.cache"/>
+								<param name="algorithm.algorithm" value="MD5"/>
+			            	</modified>
+						</fileset>
+						<pathconvert property="nb.fileset.changed.head" refid="fs.head" />
+												
+						<fileset file="${nb.dir.news}@{entry}_msg.txt" id="fs.msg">
+						  	<modified update="true"
+									seldirs="false"
+									cache="propertyfile"
+					                algorithm="digest"
+									comparator="equal"
+								>
+								<param name="cache.cachefile" value="${nb.basedir}news.cache"/>
+								<param name="algorithm.algorithm" value="MD5"/>
+			            	</modified>
+						</fileset>
+						<pathconvert property="nb.fileset.changed.msg" refid="fs.msg" />
+												
+						<fileset file="${nb.dir.news}@{entry}_tags.txt" id="fs.tags">
+						  	<modified update="true"
+									seldirs="false"
+									cache="propertyfile"
+					                algorithm="digest"
+									comparator="equal"
+								>
+								<param name="cache.cachefile" value="${nb.basedir}news.cache"/>
+								<param name="algorithm.algorithm" value="MD5"/>
+			            	</modified>
+						</fileset>
+						<pathconvert property="nb.fileset.changed.tags" refid="fs.tags" />
+						
+						<fileset file="${nb.dir.news}@{entry}_turl.txt" id="fs.url">
+						  	<modified update="true"
+									seldirs="false"
+									cache="propertyfile"
+					                algorithm="digest"
+									comparator="equal"
+								>
+								<param name="cache.cachefile" value="${nb.basedir}news.cache"/>
+								<param name="algorithm.algorithm" value="MD5"/>
+			            	</modified>
+						</fileset>
+						<pathconvert property="nb.fileset.changed.url" refid="fs.url" />
+												
+						<if>
+							<and>
+								<equals arg1="${nb.fileset.changed.head}"  arg2="" />
+								<equals arg1="${nb.fileset.changed.msg}"  arg2="" />
+								<equals arg1="${nb.fileset.changed.tags}"  arg2="" />
+								<equals arg1="${nb.fileset.changed.url}"  arg2="" />
+							</and>
+							<then>
+								<echo> - no changes found.</echo>
+																
+							</then>
+							<else>
+								<antcall target="compile_news">
+									<param name="newsdate" value="@{entry}"/>
+								</antcall>
+							</else>
+						</if>
+					</sequential>
+				</for>
+			</else>
+		</if>
+	</target>
+
+<!--
+	=========================================================================== 
+		target compile_feature_page
+	===========================================================================
+ -->	
+	<target name="compile_feature_page"
+			description="complies the feature page"
+			>
+		<if>
+			<equals arg1="${nb.featurecount}" arg2="all" />
+			<then>
+				<!-- all -->
+				<loadfile srcfile="${nb.basedir}index.txt" property="featurelist" />
+			</then>
+			<else>
+				<!-- only the last ones -->
+				<loadfile srcfile="${nb.basedir}index.txt" property="featurelist">
+					<filterchain>
+						<headfilter lines="${nb.featurecount}"/>
+					</filterchain>
+				</loadfile>
+				
+				<!-- check if there are more -->
+				<resourcecount property="lines">
+					<tokens>
+						<concat>
+							<filterchain>
+								<tokenfilter>
+									<linetokenizer/>
+								</tokenfilter>
+							</filterchain>
+							<fileset file="${nb.basedir}index.txt"/>
+						</concat>
+					</tokens>
+				</resourcecount>
+				
+				<script language="javascript"><![CDATA[
+					lines = parseInt(NewsBot.getProperty('lines'));
+					fcount = parseInt(NewsBot.getProperty('nb.featurecount'));
+					project.setProperty('hasmore', lines > fcount );
+				]]></script>
+						
+			</else>
+		</if>
+		
+		<propertyregex property="featurelist.csv"
+				input="${featurelist}"
+				regexp="(${line.separator})"
+				replace="_entry.html,"
+				casesensitive="false"
+				global="true"/>
+		
+		<if>
+			<or>
+				<equals arg1="${nb.featurecount}" arg2="all" />
+				<equals arg1="${hasmore}" arg2="false" />
+			</or>		
+			<then>
+				<filelist dir="${nb.dir.compiled}" 
+						id="fs.featured" 
+						files="${nb.snippet.feature.header},${featurelist.csv}${nb.snippet.feature.footer}" />	
+			</then>
+			<else>
+				<filelist dir="${nb.dir.compiled}" 
+						id="fs.featured" 
+						files="${nb.snippet.feature.header},${featurelist.csv}${nb.snippet.feature.nav},${nb.snippet.feature.footer}" />	
+			</else>
+		</if>
+		
+		<concat destfile="${nb.feature.file}" fixlastline="yes">
+			<filelist refid="fs.featured"/>
+		</concat>
+
+<!-- TODO replace archive link @ARCHIV_YEAR of the latest archive -->
+		
+	</target>
+
+	
+<!--
+	=========================================================================== 
+		target compile_news_archive
+	===========================================================================
+ -->		
+	<target name="compile_news_archive"
+			description="compiles all archive pages">
+<!-- TODO split up archive into years @ARCHIV_YEAR -->	
+		
+		<loadfile srcfile="${nb.basedir}index.txt" property="archivelist">
+			<filterchain>
+				<headfilter skip="${nb.featurecount}"/>
+			</filterchain>
+		</loadfile>
+		
+		<propertyregex property="archivelist.csv"
+				input="${archivelist}"
+				regexp="(${line.separator})"
+				replace="_entry.html,"
+				casesensitive="false"
+				global="true"/>
+<!-- TODO split -->
+		<filelist dir="${nb.dir.compiled}" 
+				id="fs.archive" 
+				files="${nb.snippet.archive.header},${archivelist.csv}${nb.snippet.archive.footer}" />	
+		
+		<concat destfile="${dir.deploy.news}archive.html" fixlastline="yes">
+			<filelist refid="fs.archive"/>
+		</concat>
+		
+	</target>
+
+<!--
+	=========================================================================== 
+		target input_news_date
+	===========================================================================
+ -->	
+	<target name="input_news_date"
+				description="enter the news date default is today">
+			
+		<input message="Enter News Date (yyyy-MM-dd):" 
+					defaultvalue="${internal_today}"
+					addProperty="news.date" />
+	
+		<echo>Date of news is: ${news.date}</echo>
+	</target>
+	
+<!--
+	=========================================================================== 
+		target input_news_headline
+	===========================================================================
+ -->		
+	<target name="input_news_headline"
+			description="enter the news headline">
+		
+		<property name="msg.news" value="Enter Headline for: ${news.date}${line.separator}${line.separator}${nb.latestnews}"/>
+				
+		<if>
+			<available file="${nb.dir.news}${news.date}_head.txt" />
+			<then>
+				<loadfile srcfile="${nb.dir.news}${news.date}_head.txt" property="previousheadline" />
+				<input message="${msg.news}${line.separator}${line.separator}Previous input:" 
+					defaultvalue="${previousheadline}"
+					addProperty="news.headline" />
+			</then>
+			<else>
+				<input message="${msg.news}" 
+					addProperty="news.headline" />
+			</else>
+		</if>
+		<echo>Headline is: ${news.headline}</echo>
+
+	</target>
+	
+	<!--
+		=========================================================================== 
+			target input_twitter_parameter
+		===========================================================================
+	 -->		
+	<target name="input_twitter_parameter"
+			description="enter the url and hashtags for twitter">
+		
+		<if>
+			<equals arg1="${nb.twitter.enabled}" arg2="true"/>
+			<then>
+				<!-- tweet url -->
+				<if>
+					<available file="${nb.dir.news}${news.date}_turl.txt" />
+					<then>
+						<loadfile srcfile="${nb.dir.news}${news.date}_turl.txt" property="previousurl" >
+								<filterchain>
+										<headfilter lines="1"/>
+									</filterchain>
+								</loadfile>
+						<input message="Enter Reference URL for Tweet:
+								${line.separator}# for disable the button.
+								${line.separator}Previous input:" 
+							defaultvalue="${previousurl}"
+							addProperty="input.tweeturl" />
+					</then>
+					<else>
+						<input message="Enter Reference URL for Tweet:"
+							defaultvalue="${nb.twitter.defaultURL}"
+							addProperty="input.tweeturl" />
+					</else>
+				</if>
+				<!-- hashtags -->
+				<if>
+					<available file="${nb.dir.news}${news.date}_tags.txt" />
+					<then>
+						<loadfile srcfile="${nb.dir.news}${news.date}_tags.txt" property="previoustags" />
+						
+						<input message="Enter Reference URL for Tweet (comma separated, # for empty):${line.separator}Previous input:" 
+							defaultvalue="${previoustags}"
+							addProperty="input.hashtag" />
+					</then>
+					<else>
+						<input message="Enter Hash Tags for Tweet (comma separated):" 
+								addProperty="input.hashtag" />
+					</else>
+				</if>
+				
+				<if>
+					<equals arg1="${input.tweeturl}" arg2="#" />
+					<then>
+						<echo> empty </echo>
+						<property name="news.tweeturl" value=" "/>
+					</then>
+					<else>
+						<echo> not empty "${input.tweeturl}" </echo>
+						<property name="news.tweeturl" value="${input.tweeturl}"/>
+					</else>
+				</if>
+				<if>
+					<equals arg1="${input.hashtag}" arg2="#" />
+					<then>
+						<property name="news.hashtag" value=" "/>
+					</then>
+					<else>
+						<property name="news.hashtag" value="${input.hashtag}"/>
+					</else>
+				</if>
+				
+			</then>
+		</if>
+	</target>
+	
+<!--
+	=========================================================================== 
+		target delete_entry
+	===========================================================================
+ -->	
+	<target name="delete_entry"
+			depends="init"
+			description="Called independent. Removes a news article "
+		>
+		
+		<input message="Enter News Date (yyyy-MM-dd) you want to delete:" 
+			addProperty="news.delete.date" />
+		
+		<!-- remove from index -->
+		<copy file="${nb.basedir}index.txt" tofile="${nb.basedir}index.tmp">
+            <filterchain>
+                <linecontains negate="true">
+                    <contains value="${news.delete.date}"/>
+                </linecontains>
+            </filterchain>
+        </copy>
+		<move file="${nb.basedir}index.tmp" tofile="${nb.basedir}index.txt" />
+	
+		<!-- remove from cache -->
+		<copy file="${nb.basedir}news.cache" tofile="${nb.basedir}news.cache.tmp">
+            <filterchain>
+                <linecontains negate="true">
+                    <contains value="${news.delete.date}"/>
+                </linecontains>
+            </filterchain>
+        </copy>
+		<move file="${nb.basedir}news.cache.tmp" tofile="${nb.basedir}news.cache" />
+		
+		<!-- delete files -->
+		<delete file="${nb.dir.news}${news.delete.date}_head.txt" />
+		<delete file="${nb.dir.news}${news.delete.date}_msg.txt" />
+		<delete file="${nb.dir.news}${news.delete.date}_tags.txt" />
+		<delete file="${nb.dir.news}${news.delete.date}_turl.txt" />
+		<delete file="${nb.dir.compiled}${news.delete.date}_entry.txt" />
+		
+	</target>
+
+<!--
+	=========================================================================== 
+		target edit_entry
+	===========================================================================
+ -->	
+	<target name="edit_entry"
+			depends="init"
+			description="Called independent. Edits a news article "
+		>
+		
+		<input message="Enter News Date (yyyy-MM-dd) you want to delete:" 
+			addProperty="news.edit.date" />	
+	
+
+<!-- TODO -->		
+		
+	</target>
+	
+<!--
+	=========================================================================== 
+		DEFAULT Target BUILD
+	===========================================================================
+ -->	
+	<target name="process"
+			depends="init"
+		>
+		<echo message="ANT News Bot "/>
+		<echo message="${ant.version}"/>
+		<echo message="Twitter enabled: ${nb.twitter.enabled}"/>
+		<echo message="Crosslinks enabled: ${nb.crosslinks.enabled}"/>
+		
+		<!-- inputs -->
+		<antcallback target="input_news_date" return="news.date" />
+
+		<if>
+			<equals arg1="${news.date}" arg2="#" />
+			<then>
+				<echo>No new news entry. Just compile.</echo>
+			</then>
+			<else>
+				<antcallback target="input_news_headline" return="news.headline" />
+				<antcallback target="input_twitter_parameter" return="news.tweeturl, news.hashtag" />
+				
+				<antcall target="save_news" />
+			</else>
+		</if>
+		
+		<input message="Compile Option (all/c/n):
+			${line.separator}all - recompiles all news. If you changed the layout you have to use this.
+			${line.separator}c (changed) - (default) complies only changed entries.
+			${line.separator}n (no) - does not compile anything. only the news is saved."
+				defaultvalue="c"
+				validargs="all,c,n"
+				addProperty="nb.compileoption" />
+		
+		<if> 
+			<equals arg1="${nb.compileoption}" arg2="n" />
+			<then>
+				<echo message="Do Not compile." />
+			</then>
+			<else>
+				<!-- compile -->
+				<antcall target="compile_changed_entries" />
+				<antcall target="compile_feature_page" />
+				<antcall target="compile_news_archive" />
+			</else>
+		</if>
+		
+		<echo message="Done."/>
+		
+	</target>
+
+</project>

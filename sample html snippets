@@ -1,0 +1,41 @@
+<!-- Begin header snippet -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>News Page</title>
+</head>
+<body>	
+
+  <h1>News and Home</h1>
+<!-- End header snippet -->	
+
+<!-- Begin news entry snippet -->
+		<h2><a name="@ANAME">@HEADLINE</a></h2>
+		<p>@DATE</p>
+		@MESSAGE
+		@TWT_BTN
+		<br />
+		<br />
+<!-- End news entry snippet -->	
+
+<!-- Begin twitter button snippet -->
+<a href="https://twitter.com/share" 
+		class="twitter-share-button" 
+		data-url="@TWT_URL" 
+		data-text="@HEADLINE" 
+		data-via="@TWT_VIA" 
+		data-hashtags="@TWT_HASHTAGS" 
+		data-count="none"
+		data-dnt="true">Tweet</a>
+<!-- End twitter button snippet -->
+
+<!-- Begin archive button snippet -->
+<div>
+	<a href="news/archive.html" title="go to the news archive">More</a>
+</div>
+<!-- End archive button snippet -->
+
+<!-- Begin footer snippet -->
+</body>
+</html>
+<!-- End footer snippet -->
